@@ -1,6 +1,6 @@
 [project]
 name = "pentefinocli-pe-aponti26dev"
-version = "0.1.0"
+version = "0.2.0"
 description = "Geração de análise de execução de relatórios da Aponti Academy."
 readme = "README.md"
 requires-python = ">=3.12"
