@@ -128,9 +128,11 @@ def carregar_alunos(path: Path) -> pd.DataFrame:
         )
         sys.exit(1)
 
-    return df[["nome_completo", "_id_norm", "estado", "empresa"]].drop_duplicates(
-        subset=["_id_norm"]
-    )
+    df["identificacao_usuario"] = df[COLUNA_ID_USUARIO].str.strip()
+
+    return df[
+        ["nome_completo", "_id_norm", "estado", "empresa", "identificacao_usuario"]
+    ].drop_duplicates(subset=["_id_norm"])
 
 
 def carregar_relatorio(path: Path) -> set[str]:
@@ -177,6 +179,7 @@ def calcular_ausencias(
                 "empresa": aluno["empresa"],
                 "relatorios_ausentes": ", ".join(sorted(ausentes)),
                 "total_ausencias": len(ausentes),
+                "identificacao_usuario": aluno["identificacao_usuario"],
             }
         )
     return pd.DataFrame(linhas)
@@ -199,6 +202,7 @@ def calcular_presencas(
                 "empresa": aluno["empresa"],
                 "relatorios_feitos": ", ".join(sorted(presentes)),
                 "total_feitos": len(presentes),
+                "identificacao_usuario": aluno["identificacao_usuario"],
             }
         )
     return pd.DataFrame(linhas)
@@ -265,13 +269,18 @@ def exibir_resultado(
         else 0,
         len(header_col),
     )
+    col_id = max(
+        df["identificacao_usuario"].str.len().max(), len("Identificação de Usuário")
+    )
+    col_total_max = max(df[col_total].astype(str).str.len().max(), len("Total"))
 
     header = (
         f"{'Nome Completo':<{col_nome}}  "
         f"{'Estado':<{col_estado}}  "
         f"{'Empresa':<{col_empresa}}  "
         f"{header_col:<{col_relatorios_max}}  "
-        f"Total"
+        f"{'Total':<{col_total_max}}  "
+        f"{'Identificação de Usuário':<{col_id}}"
     )
     print(f"\n{header}")
     print("-" * len(header))
@@ -283,7 +292,8 @@ def exibir_resultado(
             f"{row['estado']:<{col_estado}}  "
             f"{row['empresa']:<{col_empresa}}  "
             f"{relatorios_text:<{col_relatorios_max}}  "
-            f"{row[col_total]}"
+            f"{row[col_total]:<{col_total_max}}  "
+            f"{row['identificacao_usuario']:<{col_id}}"
         )
 
     com_ocorrencia = (df[col_total] > 0).sum()
