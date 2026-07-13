@@ -120,6 +120,14 @@ def carregar_alunos(path: Path) -> pd.DataFrame:
         )
         sys.exit(1)
 
+    duplicados = df[df["_id_norm"].duplicated(keep=False) & (df["_id_norm"] != "")]
+    if not duplicados.empty:
+        nomes = ", ".join(sorted(set(duplicados["nome_completo"])))
+        print(
+            f"ERRO: '{COLUNA_ID_USUARIO}' duplicado(a) na planilha geral entre: {nomes}."
+        )
+        sys.exit(1)
+
     return df[["nome_completo", "_id_norm", "estado", "empresa"]].drop_duplicates(
         subset=["_id_norm"]
     )
