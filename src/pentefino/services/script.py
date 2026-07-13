@@ -1,15 +1,17 @@
 import argparse
-import re
 import sys
 from pathlib import Path
 
 import pandas as pd
 
 
-def normalizar_nome(nome: str) -> str:
-    if not isinstance(nome, str):
+COLUNA_ID_USUARIO = "Identificação de usuário"
+
+
+def normalizar_id_usuario(valor: str) -> str:
+    if not isinstance(valor, str):
         return ""
-    return re.sub(r"\s+", " ", nome.strip()).lower()
+    return valor.strip().lower()
 
 
 def parsear_grupos(valor: str) -> tuple[str, str]:
@@ -87,12 +89,10 @@ def carregar_alunos(path: Path) -> pd.DataFrame:
 
     if "residente" in cols:
         df["nome_completo"] = df["residente"].str.strip()
-        df["_nome_norm"] = df["nome_completo"].apply(normalizar_nome)
         df["empresa"] = df["empresa"].str.strip() if "empresa" in cols else ""
         df["estado"] = ""
     elif {"Nome", "Sobrenome"}.issubset(cols):
         df["nome_completo"] = (df["Nome"] + " " + df["Sobrenome"]).str.strip()
-        df["_nome_norm"] = df["nome_completo"].apply(normalizar_nome)
         if "Grupos" in cols:
             grupos_parsed = df["Grupos"].apply(parsear_grupos)
             df["estado"] = grupos_parsed.apply(lambda x: x[0])
@@ -106,19 +106,50 @@ def carregar_alunos(path: Path) -> pd.DataFrame:
         )
         sys.exit(1)
 
-    return df[["nome_completo", "_nome_norm", "estado", "empresa"]].drop_duplicates(
-        subset=["_nome_norm"]
+    if COLUNA_ID_USUARIO not in cols:
+        print(f"ERRO: A planilha geral precisa ter a coluna '{COLUNA_ID_USUARIO}'.")
+        sys.exit(1)
+
+    df["_id_norm"] = df[COLUNA_ID_USUARIO].apply(normalizar_id_usuario)
+
+    sem_id = df[(df["nome_completo"] != "") & (df["_id_norm"] == "")]
+    if not sem_id.empty:
+        nomes = ", ".join(sem_id["nome_completo"])
+        print(
+            f"ERRO: Aluno(s) sem '{COLUNA_ID_USUARIO}' preenchido na planilha geral: {nomes}."
+        )
+        sys.exit(1)
+
+    return df[["nome_completo", "_id_norm", "estado", "empresa"]].drop_duplicates(
+        subset=["_id_norm"]
     )
 
 
 def carregar_relatorio(path: Path) -> set[str]:
     df = pd.read_csv(path, dtype=str).fillna("")
 
-    if "Nome completo" not in df.columns:
-        print(f"  AVISO: '{path.name}' não tem coluna 'Nome completo'. Pulando.")
+    if COLUNA_ID_USUARIO not in df.columns:
+        print(f"  AVISO: '{path.name}' não tem coluna '{COLUNA_ID_USUARIO}'. Pulando.")
         return set()
 
-    return {normalizar_nome(n) for n in df["Nome completo"] if n.strip()}
+    linhas_preenchidas = df[df.apply(lambda linha: any(v.strip() for v in linha), axis=1)]
+
+    sem_id = linhas_preenchidas[linhas_preenchidas[COLUNA_ID_USUARIO].str.strip() == ""]
+    if not sem_id.empty:
+        if "Nome completo" in df.columns:
+            identificadores = ", ".join(sem_id["Nome completo"])
+        else:
+            identificadores = ", ".join(str(i) for i in sem_id.index)
+        print(
+            f"ERRO: '{path.name}' tem linha(s) sem '{COLUNA_ID_USUARIO}' preenchido: {identificadores}."
+        )
+        sys.exit(1)
+
+    return {
+        normalizar_id_usuario(v)
+        for v in linhas_preenchidas[COLUNA_ID_USUARIO]
+        if v.strip()
+    }
 
 
 def calcular_ausencias(
@@ -129,7 +160,7 @@ def calcular_ausencias(
         ausentes = [
             nome_rel
             for nome_rel, respondentes in relatorios.items()
-            if aluno["_nome_norm"] not in respondentes
+            if aluno["_id_norm"] not in respondentes
         ]
         linhas.append(
             {
@@ -151,7 +182,7 @@ def calcular_presencas(
         presentes = [
             nome_rel
             for nome_rel, respondentes in relatorios.items()
-            if aluno["_nome_norm"] in respondentes
+            if aluno["_id_norm"] in respondentes
         ]
         linhas.append(
             {
@@ -311,7 +342,7 @@ def main(args_list: list[str] | None = None) -> None:
     relatorios: dict[str, set[str]] = {}
     for path in relatorios_paths:
         respondentes = carregar_relatorio(path)
-        if respondentes or "Nome completo" in pd.read_csv(path, nrows=0).columns:
+        if respondentes or COLUNA_ID_USUARIO in pd.read_csv(path, nrows=0).columns:
             relatorios[path.stem] = respondentes
 
     # === PASSO 4: Determinar modo de visualização ===
